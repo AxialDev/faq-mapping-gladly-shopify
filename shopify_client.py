@@ -76,8 +76,12 @@ class ShopifyFAQClient:
                         heading: str, 
                         content: str,
                         category: str = None,
-                        icon: str = None) -> bool:
+                        icon: str = None,
+                        section_id: str = None) -> bool:
         """Add a new FAQ question to the specified section"""
+        
+        # Use provided section_id or default from config
+        target_section_id = section_id or self.section_id
         
         # Get current FAQ data
         faq_data = self.get_faq_data()
@@ -104,19 +108,19 @@ class ShopifyFAQClient:
         }
         
         # Check if section exists
-        if self.section_id not in faq_data.get("sections", {}):
-            print(f"❌ Section {self.section_id} not found in FAQ data")
+        if target_section_id not in faq_data.get("sections", {}):
+            print(f"❌ Section {target_section_id} not found in FAQ data")
             return False
         
         # Add the new block
-        faq_data["sections"][self.section_id]["blocks"][new_block_id] = new_block
-        faq_data["sections"][self.section_id]["block_order"].append(new_block_id)
+        faq_data["sections"][target_section_id]["blocks"][new_block_id] = new_block
+        faq_data["sections"][target_section_id]["block_order"].append(new_block_id)
         
         # Update category and icon if provided
         if category:
-            faq_data["sections"][self.section_id]["settings"]["question_category"] = category
+            faq_data["sections"][target_section_id]["settings"]["question_category"] = category
         if icon:
-            faq_data["sections"][self.section_id]["settings"]["icon-faq"] = icon
+            faq_data["sections"][target_section_id]["settings"]["icon-faq"] = icon
         
         # Convert back to JSON and update Shopify
         updated_faq_json_str = json.dumps(faq_data, ensure_ascii=False)
@@ -139,16 +143,19 @@ class ShopifyFAQClient:
             print(f"❌ Error updating FAQ: {e}")
             return False
     
-    def list_faq_questions(self) -> List[Dict]:
+    def list_faq_questions(self, section_id: str = None) -> List[Dict]:
         """List all current FAQ questions"""
+        # Use provided section_id or default from config
+        target_section_id = section_id or self.section_id
+        
         faq_data = self.get_faq_data()
         if not faq_data:
             return []
         
         questions = []
         
-        if self.section_id in faq_data.get("sections", {}):
-            section = faq_data["sections"][self.section_id]
+        if target_section_id in faq_data.get("sections", {}):
+            section = faq_data["sections"][target_section_id]
             blocks = section.get("blocks", {})
             
             for block_id, block_data in blocks.items():
@@ -161,11 +168,24 @@ class ShopifyFAQClient:
                         "content": settings.get("question_content", "")
                     })
         
-        print(f"📋 Found {len(questions)} FAQ questions")
+        print(f"📋 Found {len(questions)} FAQ questions in section {target_section_id}")
         return questions
     
-    def remove_faq_question(self, question_handle: str) -> bool:
+    def list_available_sections(self) -> List[str]:
+        """List all available section IDs in the FAQ data"""
+        faq_data = self.get_faq_data()
+        if not faq_data:
+            return []
+        
+        sections = list(faq_data.get("sections", {}).keys())
+        print(f"📋 Available sections: {sections}")
+        return sections
+    
+    def remove_faq_question(self, question_handle: str, section_id: str = None) -> bool:
         """Remove a FAQ question by its handle"""
+        # Use provided section_id or default from config
+        target_section_id = section_id or self.section_id
+        
         faq_data = self.get_faq_data()
         if not faq_data:
             return False
@@ -176,7 +196,7 @@ class ShopifyFAQClient:
             self.backup_faq_data(faq_json_str)
         
         # Find and remove the question
-        section = faq_data["sections"].get(self.section_id, {})
+        section = faq_data["sections"].get(target_section_id, {})
         blocks = section.get("blocks", {})
         block_order = section.get("block_order", [])
         
@@ -188,13 +208,13 @@ class ShopifyFAQClient:
                 break
         
         if not block_to_remove:
-            print(f"❌ Question with handle '{question_handle}' not found")
+            print(f"❌ Question with handle '{question_handle}' not found in section {target_section_id}")
             return False
         
         # Remove from blocks and block_order
-        del faq_data["sections"][self.section_id]["blocks"][block_to_remove]
+        del faq_data["sections"][target_section_id]["blocks"][block_to_remove]
         if block_to_remove in block_order:
-            faq_data["sections"][self.section_id]["block_order"].remove(block_to_remove)
+            faq_data["sections"][target_section_id]["block_order"].remove(block_to_remove)
         
         # Update Shopify
         updated_faq_json_str = json.dumps(faq_data, ensure_ascii=False)
@@ -222,12 +242,27 @@ if __name__ == "__main__":
     # Example usage
     client = ShopifyFAQClient()
     
-    # List current questions
+    # List available sections
+    sections = client.list_available_sections()
+    
+    # List current questions from default section
     questions = client.list_faq_questions()
     
-    # Add a test question
+    # List questions from a specific section (if you know the section ID)
+    # questions_specific = client.list_faq_questions(section_id="custom-section-id")
+    
+    # Add a test question to default section
     client.add_faq_question(
-        question_handle="test-question",
-        heading="Question de test",
-        content="<p>Ceci est une question de test ajoutée via l'API.</p>"
+        question_handle="test-question-2",
+        heading="Question de test 2",
+        content="<p>Ceci est une question de test ajoutée via l'API.</p>",
+        section_id="165452516724b5285e"
     )
+    
+    # Add a question to a specific section
+    # client.add_faq_question(
+    #     question_handle="test-question-2",
+    #     heading="Question spécifique",
+    #     content="<p>Question ajoutée à une section spécifique.</p>",
+    #     section_id="custom-section-id"
+    # )

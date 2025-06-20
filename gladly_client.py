@@ -108,6 +108,6 @@ if __name__ == "__main__":
     client.export_all_languages_to_csv()
     
     # Search for specific content
-    results = client.search_answers("sapin", "fr-ca")
-    if results:
-        client.export_to_csv(results, "data/search_results_sapin.csv")
+    #results = client.search_answers("sapin", "fr-ca")
+    #if results:
+    #    client.export_to_csv(results, "data/search_results_sapin.csv")
