@@ -143,33 +143,25 @@ class ShopifyFAQClient:
             print(f"❌ Error updating FAQ: {e}")
             return False
     
-    def list_faq_questions(self, section_id: str = None) -> List[Dict]:
-        """List all current FAQ questions"""
-        # Use provided section_id or default from config
-        target_section_id = section_id or self.section_id
-        
+    def list_faq_questions(self) -> List[Dict]:
+        """List all current FAQ questions"""        
         faq_data = self.get_faq_data()
         if not faq_data:
             return []
         
-        questions = []
+        all_bosapin_faqs = []
+        for section_id, section in faq_data["sections"].items():
+            if "blocks" in section:
+                category = section.get("settings", {}).get("question_category", "")
+                for block_id, block in section["blocks"].items():
+                    faq = dict(block["settings"])  # Copie les settings
+                    faq["section_id"] = section_id
+                    faq["category"] = category
+                    faq["block_id"] = block_id
+                    all_bosapin_faqs.append(faq)
         
-        if target_section_id in faq_data.get("sections", {}):
-            section = faq_data["sections"][target_section_id]
-            blocks = section.get("blocks", {})
-            
-            for block_id, block_data in blocks.items():
-                if block_data.get("type") == "question":
-                    settings = block_data.get("settings", {})
-                    questions.append({
-                        "id": block_id,
-                        "handle": settings.get("question_handle", ""),
-                        "heading": settings.get("heading", ""),
-                        "content": settings.get("question_content", "")
-                    })
-        
-        print(f"📋 Found {len(questions)} FAQ questions in section {target_section_id}")
-        return questions
+        print(f"📋 Found {len(all_bosapin_faqs)} FAQ questions")
+        return all_bosapin_faqs
     
     def list_available_sections(self) -> List[str]:
         """List all available section IDs in the FAQ data"""
@@ -252,12 +244,12 @@ if __name__ == "__main__":
     # questions_specific = client.list_faq_questions(section_id="custom-section-id")
     
     # Add a test question to default section
-    client.add_faq_question(
-        question_handle="test-question-2",
-        heading="Question de test 2",
-        content="<p>Ceci est une question de test ajoutée via l'API.</p>",
-        section_id="165452516724b5285e"
-    )
+    #client.add_faq_question(
+    #    question_handle="test-question-2",
+    #    heading="Question de test 2",
+    #    content="<p>Ceci est une question de test ajoutée via l'API.</p>",
+    #    section_id="165452516724b5285e"
+    #)
     
     # Add a question to a specific section
     # client.add_faq_question(
