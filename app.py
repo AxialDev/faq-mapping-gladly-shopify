@@ -104,89 +104,104 @@ class FAQMapper:
                     all_bosapin_faqs.append(faq)
         return all_bosapin_faqs
     
-    def sync_language_faqs(self, language: str = "fr-ca", 
-                          dry_run: bool = True,
-                          filter_keywords: List[str] = None) -> Dict:
-        """Sync FAQ from Gladly to Shopify for a specific language"""
+    def sync_language_faqs(self, language: str = "fr-ca", dry_run: bool = True, filter_keywords: List[str] = None, mapping_file: str = "mapping.csv") -> Dict:
         print(f"🔄 Starting FAQ sync for language: {language}")
-        
+        mapping = load_mapping(mapping_file)
+        mapping_by_id = {m["gladly_id"]: m for m in mapping}
+
         # Get FAQ data from Gladly
         gladly_faqs = self.gladly_client.get_answers(language)
-        
         if not gladly_faqs:
             print(f"⚠️  No FAQ data found in Gladly for {language}")
             return {"success": False, "error": "No data from Gladly"}
-        
+
         # Filter by keywords if provided
         if filter_keywords:
             filtered_faqs = []
             for faq in gladly_faqs:
                 title = faq.get('title', faq.get('question', '')).lower()
                 content = faq.get('answer', faq.get('content', '')).lower()
-                
-                if any(keyword.lower() in title or keyword.lower() in content 
-                      for keyword in filter_keywords):
+                if any(keyword.lower() in title or keyword.lower() in content for keyword in filter_keywords):
                     filtered_faqs.append(faq)
-            
             gladly_faqs = filtered_faqs
             print(f"📋 Filtered to {len(gladly_faqs)} FAQs containing keywords: {filter_keywords}")
-        
-        # Get current Shopify FAQ questions
-        current_shopify_faqs = self.shopify_client.list_faq_questions()
-        current_handles = {faq['heading'] for faq in current_shopify_faqs}
+
         results = {
             "success": True,
             "language": language,
             "total_gladly_faqs": len(gladly_faqs),
             "processed": 0,
             "added": 0,
+            "updated": 0,
             "skipped": 0,
             "errors": []
         }
-        
+
         for gladly_faq in gladly_faqs:
             try:
-                # Nettoyage des backslashes dans les champs string pertinents de gladly_faq
-                gladly_faq['name'] = gladly_faq['name'].replace("\\", "")
-                # Check if already exists
-                if gladly_faq['name'] in current_handles:
-                    print(f"⏭️  Skipping existing FAQ: {gladly_faq['name']}")
-                    results["skipped"] += 1
-                    continue
-                
-                if dry_run:
-                    print(f"🔍 [DRY RUN] Would add FAQ: {gladly_faq['name']}")
-                else:
-                    # Add to Shopify
-                    success = self.shopify_client.add_faq_question(
-                        question_handle=gladly_faq['question_handle'],
-                        heading=gladly_faq['heading'],
-                        content=gladly_faq['content'],
-                        category=self.config.get('default_category'),
-                        icon=self.config.get('default_icon')
-                    )
-                    
-                    if success:
-                        results["added"] += 1
-                        # Add to current handles to avoid duplicates in this run
-                        current_handles.add(gladly_faq['name'])
-                    else:
-                        results["errors"].append(f"Failed to add: {gladly_faq['name']}")
-                print(current_handles) #TODO: remove this
-                results["processed"] += 1
+                gladly_id = gladly_faq.get("id")
+                gladly_question = gladly_faq.get("name")
+                gladly_answer = gladly_faq.get("bodyHtml")
+                mapping_entry = mapping_by_id.get(gladly_id)
 
-                
+                if mapping_entry:
+                    # Compare question and answer
+                    if (mapping_entry["gladly_question"] != gladly_question) or (mapping_entry["gladly_answer"] != gladly_answer):
+                        if dry_run:
+                            print(f"[DRY RUN] À mettre à jour: {gladly_question}")
+                        else:
+                            print(f"🔄 Mise à jour: {gladly_question}")
+                            mapping_entry["gladly_question"] = gladly_question
+                            mapping_entry["gladly_answer"] = gladly_answer
+                            mapping_entry["updated_time"] = datetime.now().isoformat()
+                        results["updated"] += 1
+                    else:
+                        print(f"⏭️  Skipping (no change): {gladly_question}")
+                        results["skipped"] += 1
+                else:
+                    # Nouveau : ajout dans la section faq_questions_VHRPQY
+                    if dry_run:
+                        print(f"[DRY RUN] Would add new FAQ: {gladly_question}")
+                    else:
+                        print(f"➕ Ajout: {gladly_question}")
+                        success = self.shopify_client.add_faq_question(
+                            question_handle=self.generate_question_handle(gladly_question),
+                            heading=gladly_question,
+                            content=gladly_answer,
+                            category=self.config.get('default_category'),
+                            icon=self.config.get('default_icon'),
+                            section_id='faq_questions_VHRPQY'
+                        )
+                        if not success:
+                            results["errors"].append(f"Failed to add: {gladly_question}")
+                            continue
+                    # Ajout dans le mapping
+                    mapping.append({
+                        "gladly_id": gladly_id,
+                        "bosapin_handle": "",
+                        "shopify_question": gladly_question,
+                        "gladly_question": gladly_question,
+                        "shopify_answer": "",
+                        "gladly_answer": gladly_answer,
+                        "updated_time": datetime.now().isoformat()
+                    })
+                    results["added"] += 1
+                results["processed"] += 1
             except Exception as e:
                 error_msg = f"Error processing FAQ '{gladly_faq}': {str(e)}"
                 print(f"❌ {error_msg}")
                 results["errors"].append(error_msg)
-        
+
+        if not dry_run:
+            save_mapping(mapping, mapping_file)
+
         print(f"\n📊 Sync Results for {language}:")
         print(f"   Processed: {results['processed']}")
         print(f"   Added: {results['added']}")
+        print(f"   Updated: {results['updated']}")
         print(f"   Skipped: {results['skipped']}")
         print(f"   Errors: {len(results['errors'])}")
-        
+
         return results
     
     def sync_all_languages(self, dry_run: bool = True, 
@@ -284,8 +299,8 @@ if __name__ == "__main__":
     mapper = FAQMapper()
     
     # Dry run sync for French
-    ##print("=== DRY RUN SYNC ===")
-    ###result = mapper.sync_language_faqs("fr-ca", dry_run=True)
+    print("=== DRY RUN SYNC ===")
+    result = mapper.sync_language_faqs("fr-ca", dry_run=True)
     
     # Search and sync specific content
     #print("\n=== SEARCH AND SYNC ===")
@@ -294,7 +309,3 @@ if __name__ == "__main__":
     # Uncomment to perform actual sync (remove dry_run=True)
     # print("\n=== ACTUAL SYNC ===")
     # result = mapper.sync_language_faqs("fr-ca", dry_run=False)
-
-    # tset mapping
-    mapping = load_mapping("mapping.csv")
-    print(mapping)
