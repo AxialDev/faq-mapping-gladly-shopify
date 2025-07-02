@@ -3,7 +3,6 @@ from requests.auth import HTTPBasicAuth
 import pandas as pd
 from rapidfuzz import fuzz
 import json
-from datetime import datetime
 from config import SHOPIFY_CONFIG, GLADLY_CONFIG
 
 def get_gladly_data(lng='fr-ca'):
@@ -99,8 +98,7 @@ if __name__ == "__main__":
     mapdf = create_mapping(gladly_data, shopify_data)
     
     # Créer le nom de fichier avec la date
-    current_date = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f'mapping_{current_date}.csv'
+    filename = f'mapping.csv'
     
     mapdf.to_csv(filename, index=False)
     print(f"✅ Mapping sauvegardé dans : {filename}")
