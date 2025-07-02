@@ -79,9 +79,7 @@ def create_mapping(gladly_data, shopify_data):
                 
             })
 
-    print(mapping)
-    print(shopify_data)
-    print(gladly_data)
+ 
     mapdf = pd.DataFrame(mapping).merge(pd.DataFrame(all_bosapin_faqs), left_on="bosapin_handle", right_on="question_handle", how="left").merge(pd.DataFrame(gladly_data), left_on="gladly_id", right_on="id", how="left")
     return mapdf
     
