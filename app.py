@@ -192,6 +192,30 @@ class FAQMapper:
                 print(f"❌ {error_msg}")
                 results["errors"].append(error_msg)
 
+        # Après la boucle principale
+        gladly_ids_present = {faq.get("id") for faq in gladly_faqs}
+        ids_in_mapping = {m["gladly_id"] for m in mapping}
+        ids_to_remove = ids_in_mapping - gladly_ids_present
+
+        # Index Shopify: {question_handle: section_id}
+        shopify_questions = self.shopify_client.list_faq_questions()
+        handle_to_section = {q["question_handle"]: q["section_id"] for q in shopify_questions}
+
+        for gid in ids_to_remove:
+            entry = next((m for m in mapping if m["gladly_id"] == gid), None)
+            if entry:
+                question_handle = entry["bosapin_handle"]
+                section_id = handle_to_section.get(question_handle)
+                if not question_handle or not section_id:
+                    print(f"❌ Impossible de trouver le handle ou la section pour {entry['gladly_question']}")
+                    continue
+                if dry_run:
+                    print(f"[DRY RUN] À supprimer de Shopify: {entry['gladly_question']} (handle: {question_handle}, section: {section_id})")
+                else:
+                    print(f"🗑️ Suppression Shopify: {entry['gladly_question']} (handle: {question_handle}, section: {section_id})")
+                    self.shopify_client.remove_faq_question(question_handle, section_id)
+                mapping.remove(entry)
+
         if not dry_run:
             save_mapping(mapping, mapping_file)
 
